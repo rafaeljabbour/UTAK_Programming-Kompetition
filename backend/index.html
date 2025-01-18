@@ -1,72 +1,254 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Getting started with the Mapbox Directions API</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
-    <link
-      href="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css"
-      rel="stylesheet"
-    />
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
+
+<head>
+  <meta charset="utf-8" />
+  <title>Fire Rescue App Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Mapbox GL JS -->
+  <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+  <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
+
+  <!-- Mapbox GL Directions Plugin -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.js">
+  </script>
+  <link rel="stylesheet"
+    href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.css"
+    type="text/css" />
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+    }
+
+    /* Map container covers the full screen */
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+    }
+
+    /* Container for our custom UI buttons/inputs */
+    .ui-container {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 6px;
+      padding: 16px;
+      z-index: 2;
+      /* Ensure it sits above the map */
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      width: 220px;
+    }
+
+    .ui-container h1 {
+      margin: 0 0 1em 0;
+      font-size: 1.2em;
+      text-align: center;
+    }
+
+    .ui-button,
+    .ui-input {
+      display: block;
+      width: 100%;
+      margin: 0.5em 0;
+      padding: 0.4em 0.6em;
+      font-size: 1em;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    .ui-button {
+      cursor: pointer;
+      background-color: #f8f8f8;
+      transition: background-color 0.2s;
+    }
+
+    .ui-button:hover {
+      background-color: #eee;
+    }
+
+    /* Optional: Keep the top-left Mapbox controls nicely spaced. */
+    .mapboxgl-ctrl-top-left {
+      margin-top: 10px;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- The map -->
+  <div id="map"></div>
+
+  <!-- Custom UI Container -->
+  <div class="ui-container">
+    <h1>Fire Rescue</h1>
+
+    <!-- Toggle Road Block Mode -->
+    <button id="toggleBlockBtn" class="ui-button">
+      Enable Road Block Mode
+    </button>
+
+    <!-- Destination input -->
+    <input id="destinationInput" class="ui-input" type="text" placeholder="Address or Lat,Lng..." />
+    <button id="setDestBtn" class="ui-button">Set Destination</button>
+
+    <!-- Focus user location -->
+    <button id="focusMeBtn" class="ui-button">Focus on Me</button>
+  </div>
+
+  <script>
+    // 1. Mapbox access token
+    mapboxgl.accessToken =
+      'pk.eyJ1IjoicmFsZHV0ZWsiLCJhIjoiY202MmR5MDViMHlmMjJucG5mcWw4emo4ZSJ9.Ox0uAsJ9O66fBpsEUOMXlw';
+
+    // 2. Initialize the map
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [-79.38, 43.65], // Default center: Toronto
+      zoom: 12
+    });
+
+    // 3. Add basic map controls (navigation and scale)
+    map.addControl(new mapboxgl.NavigationControl(), 'top-left');
+    map.addControl(
+      new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }),
+      'bottom-left'
+    );
+
+    // 4. Add the Directions plugin
+    const directions = new MapboxDirections({
+      accessToken: mapboxgl.accessToken,
+      unit: 'metric',
+      profile: 'mapbox/driving', // or 'mapbox/walking'
+      controls: {
+        inputs: false,     // hide built-in input boxes
+        instructions: true // show step-by-step instructions
       }
+    });
+    map.addControl(directions, 'top-left');
 
-      #map {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        width: 100%;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="map"></div>
-    <script>
-      // Set your Mapbox access token
-      mapboxgl.accessToken = 'pk.eyJ1IjoicmFsZHV0ZWsiLCJhIjoiY202MmR5MDViMHlmMjJucG5mcWw4emo4ZSJ9.Ox0uAsJ9O66fBpsEUOMXlw';
+    // Store the user's current location
+    let userLocation = null;
 
-      // Initialize the map
-      const map = new mapboxgl.Map({
-        container: 'map',
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: [-122.662323, 45.523751], // default center if location is not available
-        zoom: 12
-      });
+    // 5. Continuously update user location with watchPosition
+    let userMarker = null;
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          userLocation = [position.coords.longitude, position.coords.latitude];
 
-      // Set map bounds
-      const bounds = [
-        [-123.069003, 45.395273],
-        [-122.303707, 45.612333]
-      ];
-      map.setMaxBounds(bounds);
-
-      // Check if geolocation is available and get user's location
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const userLocation = [position.coords.longitude, position.coords.latitude];
-            
-            // Center the map to user's location
-            map.setCenter(userLocation);
-
-            // Add a marker for the user's location
-            new mapboxgl.Marker({ color: 'red' })
+          // If marker doesn't exist, create it
+          if (!userMarker) {
+            userMarker = new mapboxgl.Marker({ color: 'red' })
               .setLngLat(userLocation)
               .addTo(map);
-          },
-          (error) => {
-            console.error("Error getting user's location:", error);
-            alert("Unable to retrieve your location. Showing default view.");
-          },
-          { enableHighAccuracy: true }
-        );
-      } else {
-        alert('Geolocation is not supported by your browser.');
+          } else {
+            // Update existing marker
+            userMarker.setLngLat(userLocation);
+          }
+
+          // Keep map centered on the user
+          map.setCenter(userLocation);
+
+          // Update the Directions origin
+          directions.setOrigin(userLocation);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          alert('Unable to retrieve your location. Showing default view.');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+
+    // 6. Road Block Mode Toggle
+    let roadBlockMode = false;
+    const toggleBlockBtn = document.getElementById('toggleBlockBtn');
+    toggleBlockBtn.addEventListener('click', () => {
+      roadBlockMode = !roadBlockMode;
+      toggleBlockBtn.textContent = roadBlockMode
+        ? 'Disable Road Block Mode'
+        : 'Enable Road Block Mode';
+    });
+
+    // 7. Only add "road block" markers when Road Block mode is ON
+    map.on('click', (event) => {
+      if (roadBlockMode) {
+        new mapboxgl.Marker({
+          color: 'orange'
+        })
+          .setLngLat(event.lngLat)
+          .addTo(map);
+
+        console.log('Road block added at:', event.lngLat);
       }
-    </script>
-  </body>
+    });
+
+    // 8. Let the user change destination via an input
+    const destinationInput = document.getElementById('destinationInput');
+    const setDestBtn = document.getElementById('setDestBtn');
+    setDestBtn.addEventListener('click', () => {
+      const inputValue = destinationInput.value.trim();
+      if (!inputValue) {
+        alert('Please enter a destination (address or lat,lng).');
+        return;
+      }
+
+      /*
+        - If user enters an address/string, Mapbox Directions will geocode it automatically.
+        - If user enters "lat,lng" or "lng,lat", we can parse it as coordinates.
+      */
+
+      // Check if input might be lat,lng or lng,lat
+      const coords = inputValue.split(',');
+      if (coords.length === 2) {
+        const lat = parseFloat(coords[0]);
+        const lng = parseFloat(coords[1]);
+
+        // Heuristic: If they typed valid lat-lng, set that as a coordinate
+        if (!isNaN(lat) && !isNaN(lng)) {
+          // We assume they typed lat,lng. 
+          // If you prefer the typical "lng,lat" approach, swap the order below:
+          directions.setDestination([lng, lat]);
+          return;
+        }
+      }
+
+      // Otherwise, treat it as a place name (string). The Directions API geocodes it.
+      directions.setDestination(inputValue);
+    });
+
+    // 9. "Focus on Me" button to quickly recenter map on user's last known location
+    const focusMeBtn = document.getElementById('focusMeBtn');
+    focusMeBtn.addEventListener('click', () => {
+      if (userLocation) {
+        map.setCenter(userLocation);
+        // Optional: smooth zoom
+        map.setZoom(14);
+      } else {
+        alert('User location not available yet.');
+      }
+    });
+
+    // 10. Optional bounding box to restrict panning
+    const bounds = [
+      [-80, 43], // Southwest corner
+      [-78.5, 44] // Northeast corner
+    ];
+    map.setMaxBounds(bounds);
+
+    // 11. Set a default destination if you want
+    // directions.setDestination([-79.3806, 43.6453]);
+  </script>
+</body>
+
 </html>
