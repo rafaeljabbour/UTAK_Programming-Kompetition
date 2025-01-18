@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Fire Rescue App Demo (Detour Around Fire)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Mapbox GL JS -->
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
+
+    <!-- Mapbox GL Directions Plugin -->
+    <script
+        src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.js"></script>
+    <link rel="stylesheet"
+        href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.css"
+        type="text/css" />
+
+    <!-- Turf.js for geometry operations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+
+        /* Map container covers the full screen */
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        /* Container for our custom UI buttons/inputs */
+        .ui-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 6px;
+            padding: 16px;
+            z-index: 2;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            width: 220px;
+        }
+
+        .ui-container h1 {
+            margin: 0 0 1em 0;
+            font-size: 1.2em;
+            text-align: center;
+        }
+
+        .ui-button,
+        .ui-input {
+            display: block;
+            width: 100%;
+            margin: 0.5em 0;
+            padding: 0.4em 0.6em;
+            font-size: 1em;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        .ui-button {
+            cursor: pointer;
+            background-color: #f8f8f8;
+            transition: background-color 0.2s;
+        }
+
+        .ui-button:hover {
+            background-color: #eee;
+        }
+
+        /* Keep the top-left Mapbox controls nicely spaced. */
+        .mapboxgl-ctrl-top-left {
+            margin-top: 10px;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Custom UI Container -->
+    <div class="ui-container">
+        <h1>Fire Rescue</h1>
+
+        <!-- Toggle Fire Mode -->
+        <button id="toggleBlockBtn" class="ui-button">Enable Fire Mode</button>
+
+        <!-- Destination input (optional override) -->
+        <input id="destinationInput" class="ui-input" type="text" placeholder="Address or Lat,Lng..." />
+        <button id="setDestBtn" class="ui-button">Set Destination</button>
+
+        <!-- Focus user location -->
+        <button id="focusMeBtn" class="ui-button">Focus on Me</button>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ---------------------------------------------
+        // 1) BASIC MAP & DIRECTIONS SETUP
+        // ---------------------------------------------
+        mapboxgl.accessToken = 'pk.eyJ1IjoicmFsZHV0ZWsiLCJhIjoiY202MmR5MDViMHlmMjJucG5mcWw4emo4ZSJ9.Ox0uAsJ9O66fBpsEUOMXlw'; // <== REPLACE ME
+
+        const defaultCenter = [-79.38, 43.65]; // Default center (Toronto)
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v12',
+            center: defaultCenter,
+            zoom: 12
+        });
+
+        // Basic map controls
+        map.addControl(new mapboxgl.NavigationControl(), 'top-left');
+        map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
+
+        // Directions plugin (non-interactive by default)
+        const directions = new MapboxDirections({
+            accessToken: mapboxgl.accessToken,
+            unit: 'metric',
+            profile: 'mapbox/driving',
+            interactive: false,
+            controls: {
+                inputs: false,
+                instructions: true
+            }
+        });
+        map.addControl(directions, 'top-left');
+
+        // Optional: Set max bounds
+        const bounds = [
+            [-80, 43],    // Southwest corner
+            [-78.5, 44]   // Northeast corner
+        ];
+        map.setMaxBounds(bounds);
+
+        // ---------------------------------------------
+        // 2) USER LOCATION
+        // ---------------------------------------------
+        let userLocation = null;  // Format: [lng, lat]
+        let userMarker = null;
+
+        // Watch the user's location
+        if ('geolocation' in navigator) {
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    userLocation = [position.coords.longitude, position.coords.latitude];
+
+                    // Create or update the user marker
+                    if (!userMarker) {
+                        userMarker = new mapboxgl.Marker({ color: 'blue' })
+                            .setLngLat(userLocation)
+                            .addTo(map);
+                    } else {
+                        userMarker.setLngLat(userLocation);
+                    }
+
+                    // If no custom destination, recalc route to best safe haven
+                    if (!customDestinationActive) {
+                        recalcRouteToBestSafeHaven();
+                    }
+                },
+                (err) => {
+                    console.error('Geolocation error:', err);
+                    alert('Unable to retrieve your location. Defaulting to Toronto.');
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            alert('Geolocation is not supported by your browser.');
+        }
+
+        // "Focus on Me" button
+        document.getElementById('focusMeBtn').addEventListener('click', () => {
+            if (userLocation) {
+                map.flyTo({ center: userLocation, zoom: 14 });
+            } else {
+                alert('User location not available yet.');
+            }
+        });
+
+        // ---------------------------------------------
+        // 3) LOAD SAFE HAVENS + FIRES FROM THE SERVER
+        // ---------------------------------------------
+
+        // We'll store the fetched data here
+        let safeHavensData = [];
+        let fireFeatures = [];
+        let fireBuffers = [];
+
+        // onLoad, fetch data from our Express APIs:
+        map.on('load', () => {
+            loadSafeHavens();
+            loadFires();
+        });
+
+        async function loadSafeHavens() {
+            try {
+                const response = await fetch('/api/safe-havens');
+                safeHavensData = await response.json();
+
+                // Place markers for each safe haven
+                safeHavensData.forEach((haven) => {
+                    new mapboxgl.Marker({ color: 'yellow' })
+                        .setLngLat(haven.coords)
+                        .setPopup(new mapboxgl.Popup().setText(haven.name))
+                        .addTo(map);
+                });
+            } catch (err) {
+                console.error('Failed to load safe havens:', err);
+            }
+        }
+
+        async function loadFires() {
+            try {
+                const response = await fetch('/api/fires');
+                const fires = await response.json();
+
+                // For each fire, place a red marker + create a buffer
+                fires.forEach((fire) => {
+                    new mapboxgl.Marker({ color: 'red' })
+                        .setLngLat(fire.coords)
+                        .addTo(map);
+
+                    const firePoint = turf.point(fire.coords);
+                    const bufferPoly = turf.buffer(firePoint, 0.02, { units: 'kilometers' });
+
+                    fireFeatures.push(firePoint);
+                    fireBuffers.push(bufferPoly);
+                });
+
+                // Once we have all fires, recalc route
+                if (userLocation && !customDestinationActive) {
+                    recalcRouteToBestSafeHaven();
+                }
+            } catch (err) {
+                console.error('Failed to load fires:', err);
+            }
+        }
+
+        // ---------------------------------------------
+        // 4) FIRE MODE (ROAD BLOCK MODE)
+        // ---------------------------------------------
+        let fireMode = false; // If true, clicks create "fire" points
+        const toggleBlockBtn = document.getElementById('toggleBlockBtn');
+
+        toggleBlockBtn.addEventListener('click', () => {
+            fireMode = !fireMode;
+            toggleBlockBtn.textContent = fireMode
+                ? 'Disable Fire Mode'
+                : 'Enable Fire Mode';
+        });
+
+        // When map is clicked in Fire Mode, add a "fire point"
+        map.on('click', async (event) => {
+            if (!fireMode) return;
+
+            const lngLat = [event.lngLat.lng, event.lngLat.lat];
+
+            // 1) Place a red marker on the map
+            new mapboxgl.Marker({ color: 'red' })
+                .setLngLat(lngLat)
+                .addTo(map);
+
+            // 2) Create the buffer
+            const firePoint = turf.point(lngLat);
+            const bufferPoly = turf.buffer(firePoint, 0.02, { units: 'kilometers' });
+            fireFeatures.push(firePoint);
+            fireBuffers.push(bufferPoly);
+
+            // 3) Save the fire pin to the server (POST /api/fires)
+            try {
+                await fetch('/api/fires', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ coords: lngLat })
+                });
+            } catch (err) {
+                console.error('Failed to save fire location:', err);
+            }
+
+            // 4) Recalculate best route if user hasn't set a custom destination
+            if (!customDestinationActive) {
+                recalcRouteToBestSafeHaven();
+            }
+        });
+
+        // ---------------------------------------------
+        // 5) CALCULATE BEST ROUTE + DETOUR IF BLOCKED
+        // ---------------------------------------------
+
+        /**
+         * Attempts user -> each safe haven.
+         * If direct route is blocked, tries user->detour->haven.
+         * Among all valid routes, picks the shortest by distance.
+         * Then updates the Directions plugin with that route.
+         */
+        async function recalcRouteToBestSafeHaven() {
+            if (!userLocation) return;
+
+            const candidateRoutes = [];
+
+            for (const haven of safeHavensData) {
+                // 1) Direct route: user -> haven
+                const directData = await fetchRoute([userLocation], haven.coords);
+                if (!directData || !directData.routes?.length) {
+                    continue;
+                }
+                const directRoute = directData.routes[0];
+
+                // Check if direct route is blocked
+                const directBlocked = routeIntersectsFire(directRoute);
+
+                if (!directBlocked) {
+                    candidateRoutes.push({
+                        haven,
+                        waypoints: [userLocation, haven.coords],
+                        distance: directRoute.distance,
+                        duration: directRoute.duration,
+                        type: 'direct'
+                    });
+                } else {
+                    // 2) Attempt a detour: user -> detour -> haven
+                    const detourData = await attemptDetourRoute(userLocation, haven.coords);
+                    if (detourData) {
+                        candidateRoutes.push({
+                            haven,
+                            waypoints: detourData.waypoints,
+                            distance: detourData.distance,
+                            duration: detourData.duration,
+                            type: 'detour'
+                        });
+                    }
+                }
+            }
+
+            if (candidateRoutes.length === 0) {
+                console.warn('No valid routes found to any haven.');
+                return;
+            }
+
+            // Pick the shortest by distance
+            candidateRoutes.sort((a, b) => a.distance - b.distance);
+            const bestRoute = candidateRoutes[0];
+
+            // Update the Directions plugin with the best route
+            directions.setOrigin(bestRoute.waypoints[0]);
+            if (bestRoute.waypoints.length === 2) {
+                // Direct route
+                directions.setDestination(bestRoute.waypoints[1]);
+            } else {
+                // Detour route with an intermediate waypoint
+                bestRoute.waypoints.forEach((wp, index) => {
+                    directions.setWaypoint(index, wp);
+                });
+            }
+
+            console.log(
+                `Chosen route to ${bestRoute.haven.name} via ${bestRoute.type}.
+         Distance: ${(bestRoute.distance / 1000).toFixed(2)} km,
+         Duration: ${(bestRoute.duration / 60).toFixed(1)} min`
+            );
+        }
+
+        /**
+         * attemptDetourRoute(userLoc, havenCoords):
+         * Naive approach:
+         * - For each fire buffer, compute bounding box.
+         * - Try user->cornerOrCenter->haven. Check if route is clear.
+         * - Return the first successful detour route found.
+         */
+        async function attemptDetourRoute(userLoc, havenCoords) {
+            for (const poly of fireBuffers) {
+                const [west, south, east, north] = turf.bbox(poly);
+
+                // Center + corners
+                const center = [(west + east) / 2, (south + north) / 2];
+                const corners = [
+                    [west, south],
+                    [east, north],
+                    [west, north],
+                    [east, south]
+                ];
+                const candidates = [center, ...corners];
+
+                for (const waypoint of candidates) {
+                    // Attempt route: user -> waypoint -> haven
+                    const routeData = await fetchRoute([userLoc, waypoint], havenCoords);
+                    if (!routeData || !routeData.routes?.length) {
+                        continue;
+                    }
+
+                    const route = routeData.routes[0];
+                    if (!routeIntersectsFire(route)) {
+                        // Found a valid detour
+                        return {
+                            waypoints: [userLoc, waypoint, havenCoords],
+                            distance: route.distance,
+                            duration: route.duration
+                        };
+                    }
+                }
+            }
+            return null; // No detour route found
+        }
+
+        /**
+         * Checks if a route (from the Directions API) intersects any fire buffer.
+         */
+        function routeIntersectsFire(route) {
+            const routeCoords = route.geometry.coordinates;
+            const routeLine = turf.lineString(routeCoords);
+            return fireBuffers.some((poly) => turf.booleanIntersects(routeLine, poly));
+        }
+
+        // ---------------------------------------------
+        // 6) FETCHING ROUTES
+        // ---------------------------------------------
+        /**
+         * fetchRoute(waypointsArray, finalCoords):
+         * Builds a Directions API query with multiple waypoints + final coord.
+         */
+        async function fetchRoute(waypointsArr, finalCoords) {
+            const allPoints = [...waypointsArr, finalCoords];
+            const coordStr = allPoints.map(pt => `${pt[0]},${pt[1]}`).join(';');
+            const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}` +
+                `?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    console.error('Error fetching route:', resp.status, resp.statusText);
+                    return null;
+                }
+                return await resp.json();
+            } catch (err) {
+                console.error('Request failed:', err);
+                return null;
+            }
+        }
+
+        // ---------------------------------------------
+        // 7) DESTINATION INPUT (OPTIONAL OVERRIDE)
+        // ---------------------------------------------
+        let customDestinationActive = false;
+
+        const destinationInput = document.getElementById('destinationInput');
+        const setDestBtn = document.getElementById('setDestBtn');
+
+        setDestBtn.addEventListener('click', () => {
+            const inputValue = destinationInput.value.trim();
+            if (!inputValue) {
+                alert('Please enter a destination (address or lat,lng).');
+                return;
+            }
+            customDestinationActive = true;
+
+            // If user enters "lat,lng" or "lng,lat"
+            const coords = inputValue.split(',');
+            if (coords.length === 2) {
+                const lat = parseFloat(coords[0]);
+                const lng = parseFloat(coords[1]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    // We'll assume "lat,lng" format (swap if you prefer "lng,lat").
+                    directions.setOrigin(userLocation || defaultCenter);
+                    directions.setDestination([lng, lat]);
+                    return;
+                }
+            }
+
+            // Otherwise, treat as an address/place name
+            directions.setOrigin(userLocation || defaultCenter);
+            directions.setDestination(inputValue);
+        });
+    </script>
+</body>
+
+</html>
