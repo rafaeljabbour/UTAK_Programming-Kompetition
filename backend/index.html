@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <title>Fire Rescue App Demo</title>
+  <title>Fire Rescue App Demo (Safe Havens + Fire Blocking)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Mapbox GL JS -->
@@ -11,11 +11,14 @@
   <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
 
   <!-- Mapbox GL Directions Plugin -->
-  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.js">
-  </script>
+  <script
+    src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.js"></script>
   <link rel="stylesheet"
     href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.css"
     type="text/css" />
+
+  <!-- Turf.js for geometry operations (buffer, intersection, etc.) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
 
   <style>
     body {
@@ -89,12 +92,10 @@
   <div class="ui-container">
     <h1>Fire Rescue</h1>
 
-    <!-- Toggle Road Block Mode -->
-    <button id="toggleBlockBtn" class="ui-button">
-      Enable Road Block Mode
-    </button>
+    <!-- Toggle Fire Mode -->
+    <button id="toggleBlockBtn" class="ui-button">Enable Fire Mode</button>
 
-    <!-- Destination input -->
+    <!-- Destination input (optional override) -->
     <input id="destinationInput" class="ui-input" type="text" placeholder="Address or Lat,Lng..." />
     <button id="setDestBtn" class="ui-button">Set Destination</button>
 
@@ -103,66 +104,76 @@
   </div>
 
   <script>
-    // 1. Mapbox access token
+    // --------------------------------------------------
+    // 1) BASIC MAP & DIRECTIONS SETUP
+    // --------------------------------------------------
     mapboxgl.accessToken =
       'pk.eyJ1IjoicmFsZHV0ZWsiLCJhIjoiY202MmR5MDViMHlmMjJucG5mcWw4emo4ZSJ9.Ox0uAsJ9O66fBpsEUOMXlw';
 
-    // 2. Initialize the map
     const map = new mapboxgl.Map({
       container: 'map',
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [-79.38, 43.65], // Default center: Toronto
+      center: [-79.38, 43.65], // Default: Toronto
       zoom: 12
     });
 
-    // 3. Add basic map controls (navigation and scale)
+    // Basic map controls
     map.addControl(new mapboxgl.NavigationControl(), 'top-left');
     map.addControl(
       new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }),
       'bottom-left'
     );
 
-    // 4. Add the Directions plugin
+    // Directions plugin, set interactive=false so clicks don't change routes automatically
     const directions = new MapboxDirections({
       accessToken: mapboxgl.accessToken,
       unit: 'metric',
-      profile: 'mapbox/driving', // or 'mapbox/walking'
+      profile: 'mapbox/driving',
+      interactive: false,
       controls: {
-        inputs: false,     // hide built-in input boxes
-        instructions: true // show step-by-step instructions
+        inputs: false,
+        instructions: true
       }
     });
     map.addControl(directions, 'top-left');
 
-    // Store the user's current location
-    let userLocation = null;
+    // Optional bounding box
+    const bounds = [
+      [-80, 43],   // Southwest corner
+      [-78.5, 44]  // Northeast corner
+    ];
+    map.setMaxBounds(bounds);
 
-    // 5. Continuously update user location with watchPosition
+
+    // --------------------------------------------------
+    // 2) USER LOCATION
+    // --------------------------------------------------
+    let userLocation = null;  // [lng, lat]
     let userMarker = null;
+
+    // Start watching user's location
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
-        (position) => {
-          userLocation = [position.coords.longitude, position.coords.latitude];
+        (pos) => {
+          userLocation = [pos.coords.longitude, pos.coords.latitude];
 
-          // If marker doesn't exist, create it
+          // Create or update the user marker
           if (!userMarker) {
-            userMarker = new mapboxgl.Marker({ color: 'red' })
+            userMarker = new mapboxgl.Marker({ color: 'blue' })
               .setLngLat(userLocation)
               .addTo(map);
           } else {
-            // Update existing marker
             userMarker.setLngLat(userLocation);
           }
 
-          // Keep map centered on the user
-          map.setCenter(userLocation);
-
-          // Update the Directions origin
-          directions.setOrigin(userLocation);
+          // Recalculate route to best safe haven (unless user overrides with Destination Input)
+          if (!customDestinationActive) {
+            recalcRouteToBestSafeHaven();
+          }
         },
-        (error) => {
-          console.error('Geolocation error:', error);
-          alert('Unable to retrieve your location. Showing default view.');
+        (err) => {
+          console.error('Geolocation error:', err);
+          alert('Unable to retrieve your location. Showing default center (Toronto).');
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
@@ -170,84 +181,181 @@
       alert('Geolocation is not supported by your browser.');
     }
 
-    // 6. Road Block Mode Toggle
-    let roadBlockMode = false;
-    const toggleBlockBtn = document.getElementById('toggleBlockBtn');
-    toggleBlockBtn.addEventListener('click', () => {
-      roadBlockMode = !roadBlockMode;
-      toggleBlockBtn.textContent = roadBlockMode
-        ? 'Disable Road Block Mode'
-        : 'Enable Road Block Mode';
-    });
-
-    // 7. Only add "road block" markers when Road Block mode is ON
-    map.on('click', (event) => {
-      if (roadBlockMode) {
-        new mapboxgl.Marker({
-          color: 'orange'
-        })
-          .setLngLat(event.lngLat)
-          .addTo(map);
-
-        console.log('Road block added at:', event.lngLat);
+    // "Focus on Me" button
+    const focusMeBtn = document.getElementById('focusMeBtn');
+    focusMeBtn.addEventListener('click', () => {
+      if (userLocation) {
+        map.flyTo({ center: userLocation, zoom: 14 });
+      } else {
+        alert('User location not available yet.');
       }
     });
 
-    // 8. Let the user change destination via an input
+
+    // --------------------------------------------------
+    // 3) SAFE HAVENS (3 locations, marked in yellow)
+    // --------------------------------------------------
+    const safeHavens = [
+      { name: 'Haven A', coords: [-79.36, 43.65] },
+      { name: 'Haven B', coords: [-79.40, 43.66] },
+      { name: 'Haven C', coords: [-79.35, 43.63] },
+    ];
+
+    // Place the safe haven markers
+    safeHavens.forEach((haven) => {
+      new mapboxgl.Marker({ color: 'yellow' })
+        .setLngLat(haven.coords)
+        .setPopup(new mapboxgl.Popup().setText(haven.name))
+        .addTo(map);
+    });
+
+
+    // --------------------------------------------------
+    // 4) FIRE MODE (ROAD BLOCK MODE)
+    // --------------------------------------------------
+    let fireMode = false; // "roadBlockMode"
+    const toggleBlockBtn = document.getElementById('toggleBlockBtn');
+    toggleBlockBtn.addEventListener('click', () => {
+      fireMode = !fireMode;
+      toggleBlockBtn.textContent = fireMode
+        ? 'Disable Fire Mode'
+        : 'Enable Fire Mode';
+    });
+
+    // We'll store an array of "fire points" plus their buffer polygons
+    let fireFeatures = [];
+    let fireBuffers = []; // Polygons from turf.buffer
+
+    // On map click, if Fire Mode is ON, place a "fire marker" and recalc routes
+    map.on('click', (event) => {
+      if (!fireMode) return;
+
+      // 1) Place a red marker to represent fire
+      new mapboxgl.Marker({ color: 'red' })
+        .setLngLat(event.lngLat)
+        .addTo(map);
+
+      // 2) Buffer ~20m around the fire point
+      const firePoint = turf.point([event.lngLat.lng, event.lngLat.lat]);
+      const bufferPoly = turf.buffer(firePoint, 0.02, { units: 'kilometers' });
+
+      fireFeatures.push(firePoint);
+      fireBuffers.push(bufferPoly);
+
+      // 3) Recalculate route if user is not using a custom destination
+      if (!customDestinationActive) {
+        recalcRouteToBestSafeHaven();
+      }
+    });
+
+
+    // --------------------------------------------------
+    // 5) CALCULATE BEST ROUTE TO ANY SAFE HAVEN
+    // --------------------------------------------------
+    // We do a custom request to the Mapbox Directions API for each haven, 
+    // check if the route intersects any fire buffers, and pick the best non-blocked route.
+    async function recalcRouteToBestSafeHaven() {
+      if (!userLocation) return;
+
+      // We'll gather route info for each safe haven
+      let candidateRoutes = [];
+
+      for (const haven of safeHavens) {
+        const routeData = await fetchRoute(userLocation, haven.coords);
+        if (!routeData) continue;
+
+        const route = routeData.routes?.[0];
+        if (!route) continue;
+
+        // Convert route geometry to a turf linestring
+        const routeCoords = route.geometry.coordinates;
+        const routeLine = turf.lineString(routeCoords);
+
+        // Check if route intersects any fire buffers
+        const isBlocked = fireBuffers.some((poly) => {
+          return turf.booleanIntersects(routeLine, poly);
+        });
+
+        candidateRoutes.push({
+          haven,
+          isBlocked,
+          distance: route.distance,   // meters
+          duration: route.duration,   // seconds
+        });
+      }
+
+      if (!candidateRoutes.length) {
+        console.warn('No routes found to any haven (maybe no user location?).');
+        return;
+      }
+
+      // Filter out blocked routes
+      const nonBlocked = candidateRoutes.filter((r) => !r.isBlocked);
+      let bestRoute = null;
+
+      if (!nonBlocked.length) {
+        // All are blocked
+        bestRoute = candidateRoutes.sort((a, b) => a.distance - b.distance)[0];
+        alert('All safe havens are blocked by fire! Showing the shortest anyway.');
+      } else {
+        // Among non-blocked, pick the shortest
+        bestRoute = nonBlocked.sort((a, b) => a.distance - b.distance)[0];
+      }
+
+      // Set directions plugin to that haven
+      directions.setOrigin(userLocation);
+      directions.setDestination(bestRoute.haven.coords);
+    }
+
+    // Helper: Fetch route from Mapbox Directions API
+    async function fetchRoute(from, to) {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+        `${from[0]},${from[1]};${to[0]},${to[1]}` +
+        `?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          console.error('Error fetching route:', resp.status, resp.statusText);
+          return null;
+        }
+        return await resp.json();
+      } catch (err) {
+        console.error('Request failed:', err);
+        return null;
+      }
+    }
+
+
+    // --------------------------------------------------
+    // 6) DESTINATION INPUT (OPTIONAL OVERRIDE)
+    // --------------------------------------------------
+    let customDestinationActive = false; // if user sets a custom address
+
     const destinationInput = document.getElementById('destinationInput');
     const setDestBtn = document.getElementById('setDestBtn');
+
     setDestBtn.addEventListener('click', () => {
       const inputValue = destinationInput.value.trim();
       if (!inputValue) {
         alert('Please enter a destination (address or lat,lng).');
         return;
       }
+      customDestinationActive = true;
 
-      /*
-        - If user enters an address/string, Mapbox Directions will geocode it automatically.
-        - If user enters "lat,lng" or "lng,lat", we can parse it as coordinates.
-      */
-
-      // Check if input might be lat,lng or lng,lat
+      // If user enters lat,lng or lng,lat, parse it
       const coords = inputValue.split(',');
       if (coords.length === 2) {
         const lat = parseFloat(coords[0]);
         const lng = parseFloat(coords[1]);
-
-        // Heuristic: If they typed valid lat-lng, set that as a coordinate
         if (!isNaN(lat) && !isNaN(lng)) {
-          // We assume they typed lat,lng. 
-          // If you prefer the typical "lng,lat" approach, swap the order below:
+          // We'll assume "lat,lng" format. Swap if you prefer "lng,lat".
           directions.setDestination([lng, lat]);
           return;
         }
       }
-
-      // Otherwise, treat it as a place name (string). The Directions API geocodes it.
+      // Otherwise, treat as an address or place name
       directions.setDestination(inputValue);
     });
-
-    // 9. "Focus on Me" button to quickly recenter map on user's last known location
-    const focusMeBtn = document.getElementById('focusMeBtn');
-    focusMeBtn.addEventListener('click', () => {
-      if (userLocation) {
-        map.setCenter(userLocation);
-        // Optional: smooth zoom
-        map.setZoom(14);
-      } else {
-        alert('User location not available yet.');
-      }
-    });
-
-    // 10. Optional bounding box to restrict panning
-    const bounds = [
-      [-80, 43], // Southwest corner
-      [-78.5, 44] // Northeast corner
-    ];
-    map.setMaxBounds(bounds);
-
-    // 11. Set a default destination if you want
-    // directions.setDestination([-79.3806, 43.6453]);
   </script>
 </body>
 
