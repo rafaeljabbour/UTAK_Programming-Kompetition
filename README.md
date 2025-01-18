@@ -17,3 +17,5 @@ Contains default react native expo app folders and files. Modified/added files i
 - ScreenA.tsx: login screen for responders
 - WebScreen.tsx: contains embedded website launched for citizen interface
 - WebScreenResponders.tsx: contains embedded website launched for responders interface
+- index.html implements the mapbox api and creates an interactive interface that users use to input desired destinations and combines fire locations and safe haven locations as uploaded from the user, other users and first aid responders. It uses MongoDB to upload all of the fire locations and safe haven locations to a database that synchronizes through the maps of all of the users. 
+
