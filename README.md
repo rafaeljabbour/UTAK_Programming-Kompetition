@@ -78,8 +78,6 @@ Rafael Jabbour, Alina Khan, Lavneet Sidhu, and Daniel Rolfe
 
 ## Repository Structure
 
-# UTAK_Programming-Kompetition
-
 git clone https://github.com/rafaeljabbour/UTAK_Programming-Kompetition
 
 cd to the project
@@ -90,7 +88,7 @@ Start the project using: npm start
 
 Download Expo Go on the iOS or Google Play Store, and then scan the QR code
 
-TEAM_5/FrontEnd contains all the files relating to the front end, including screens and components
+../FrontEnd contains all the files relating to the front end, including screens and components
 
 Contains default react native expo app folders and files. Modified/added files include:
 - index.tsx: Entry screen, which lets user join as citizen or responder.
