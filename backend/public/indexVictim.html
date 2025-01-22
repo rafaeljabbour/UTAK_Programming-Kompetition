@@ -21,13 +21,14 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
 
     <style>
+        /* Basic body styles */
         body {
             margin: 0;
             padding: 0;
             font-family: sans-serif;
         }
 
-        /* Map container covers the full screen */
+        /* Map container covering the entire screen */
         #map {
             position: absolute;
             top: 0;
@@ -35,7 +36,7 @@
             width: 100%;
         }
 
-        /* Container for our custom UI buttons/inputs */
+        /* Custom UI container styling */
         .ui-container {
             position: absolute;
             top: 20px;
@@ -48,12 +49,14 @@
             width: 220px;
         }
 
+        /* Header styling */
         .ui-container h1 {
             margin: 0 0 1em 0;
             font-size: 1.2em;
             text-align: center;
         }
 
+        /* Button and input field styling */
         .ui-button,
         .ui-input {
             display: block;
@@ -65,6 +68,7 @@
             border: 1px solid #ccc;
         }
 
+        /* Button hover effect */
         .ui-button {
             cursor: pointer;
             background-color: #f8f8f8;
@@ -75,7 +79,7 @@
             background-color: #eee;
         }
 
-        /* Keep the top-left Mapbox controls nicely spaced. */
+        /* Mapbox controls position */
         .mapboxgl-ctrl-top-left {
             margin-top: 10px;
             margin-left: 10px;
@@ -84,36 +88,37 @@
 </head>
 
 <body>
-    <!-- Map -->
+    <!-- Map container -->
     <div id="map"></div>
 
-    <!-- Custom UI Container -->
+    <!-- Custom UI Container for buttons and inputs -->
     <div class="ui-container">
         <h1>Fire Rescue</h1>
 
-        <!-- Toggle Fire Mode -->
+        <!-- Toggle Fire Mode Button -->
         <button id="toggleBlockBtn" class="ui-button">Enable Fire Mode</button>
 
-        <!-- Toggle Haven Mode -->
-        <button id="toggleHavenBtn" class="ui-button">Enable Haven Mode</button>
-
-        <!-- Destination input (optional override) -->
+        <!-- Destination input (optional) -->
         <input id="destinationInput" class="ui-input" type="text" placeholder="Address or Lat,Lng..." />
         <button id="setDestBtn" class="ui-button">Set Destination</button>
 
-        <!-- Focus user location -->
+        <!-- Focus on User Location Button -->
         <button id="focusMeBtn" class="ui-button">Focus on Me</button>
     </div>
 
     <script>
         'use strict';
 
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
         // 1) BASIC MAP & DIRECTIONS SETUP
-        // ---------------------------------------------
-        mapboxgl.accessToken = 'pk.eyJ1IjoicmFsZHV0ZWsiLCJhIjoiY202MmR5MDViMHlmMjJucG5mcWw4emo4ZSJ9.Ox0uAsJ9O66fBpsEUOMXlw'; // <== Replace with your token
+        // ------------------------------------------------------------------------------------------
 
-        const defaultCenter = [-79.38, 43.65]; // Default center (Toronto)
+        // Mapbox access token 
+        mapboxgl.accessToken = 'pk.eyJ1IjoicmFsZHV0ZWsiLCJhIjoiY202MmR5MDViMHlmMjJucG5mcWw4emo4ZSJ9.Ox0uAsJ9O66fBpsEUOMXlw';
+
+        const defaultCenter = [-79.38, 43.65]; // Default map center (Toronto/Uoft area)
+
+        // Initialize the Mapbox map
         const map = new mapboxgl.Map({
             container: 'map',
             style: 'mapbox://styles/mapbox/streets-v12',
@@ -121,7 +126,7 @@
             zoom: 12
         });
 
-        // Basic map controls
+        // Add basic map controls (zoom and scale)
         map.addControl(new mapboxgl.NavigationControl(), 'top-left');
         map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
 
@@ -136,28 +141,29 @@
                 instructions: true
             }
         });
-        map.addControl(directions, 'top-left');
+        map.addControl(directions, 'top-right');
 
-        // Optional: Set max bounds
+        // Set map boundaries
         const bounds = [
             [-80, 43],    // Southwest corner
             [-78.5, 44]   // Northeast corner
         ];
         map.setMaxBounds(bounds);
 
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
         // 2) USER LOCATION
-        // ---------------------------------------------
-        let userLocation = null;  // Format: [lng, lat]
+        // ------------------------------------------------------------------------------------------
+
+        let userLocation = null;  // Format: [longitude, latitude]
         let userMarker = null;
 
-        // Watch the user's location
+        // Check if geolocation is available
         if ('geolocation' in navigator) {
             navigator.geolocation.watchPosition(
                 (position) => {
                     userLocation = [position.coords.longitude, position.coords.latitude];
 
-                    // Create or update the user marker
+                    // Create or update user location marker
                     if (!userMarker) {
                         userMarker = new mapboxgl.Marker({ color: 'blue' })
                             .setLngLat(userLocation)
@@ -166,7 +172,7 @@
                         userMarker.setLngLat(userLocation);
                     }
 
-                    // If no custom destination, recalc route to best safe haven
+                    // Recalculate route to the best safe haven if no custom destination is active
                     if (!customDestinationActive) {
                         recalcRouteToBestSafeHaven();
                     }
@@ -185,7 +191,7 @@
             alert('Geolocation is not supported by your browser.');
         }
 
-        // "Focus on Me" button
+        // "Focus on Me" button event listener
         document.getElementById('focusMeBtn').addEventListener('click', () => {
             if (userLocation) {
                 map.flyTo({ center: userLocation, zoom: 14 });
@@ -194,19 +200,21 @@
             }
         });
 
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
         // 3) LOAD SAFE HAVENS + FIRES FROM THE SERVER
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
 
         let safeHavensData = [];
         let fireFeatures = [];
         let fireBuffers = [];
 
+        // Fetch safe havens and fire locations on map load
         map.on('load', () => {
             loadSafeHavens();
             loadFires();
         });
 
+        // Load safe havens from the server
         async function loadSafeHavens() {
             try {
                 const response = await fetch('/api/safe-havens');
@@ -224,12 +232,13 @@
             }
         }
 
+        // Load fires from the server
         async function loadFires() {
             try {
                 const response = await fetch('/api/fires');
                 const fires = await response.json();
 
-                // For each fire, place a red marker + create a buffer
+                // For each fire, place a red marker and create a buffer zone
                 fires.forEach((fire) => {
                     new mapboxgl.Marker({ color: 'red' })
                         .setLngLat(fire.coords)
@@ -242,7 +251,7 @@
                     fireBuffers.push(bufferPoly);
                 });
 
-                // Once we have all fires, recalc route
+                // Recalculate the route to the best safe haven if necessary
                 if (userLocation && !customDestinationActive) {
                     recalcRouteToBestSafeHaven();
                 }
@@ -251,124 +260,77 @@
             }
         }
 
-        // ---------------------------------------------
-        // 4) FIRE MODE & HAVEN MODE
-        // ---------------------------------------------
-        let fireMode = false;   // If true, clicks create "fire" points
-        let havenMode = false;  // If true, clicks create "safe haven" points
+        // ------------------------------------------------------------------------------------------
+        // 4) FIRE MODE (ROAD BLOCK MODE)
+        // ------------------------------------------------------------------------------------------
 
+        let fireMode = false;  // If true, map clicks create "fire" points
         const toggleBlockBtn = document.getElementById('toggleBlockBtn');
-        const toggleHavenBtn = document.getElementById('toggleHavenBtn');
 
-        // Toggle Fire Mode
+        // Toggle fire mode when the button is clicked
         toggleBlockBtn.addEventListener('click', () => {
             fireMode = !fireMode;
-            havenMode = false; // Turn off haven mode if we enable Fire mode
-            toggleBlockBtn.textContent = fireMode
-                ? 'Disable Fire Mode'
-                : 'Enable Fire Mode';
-            toggleHavenBtn.textContent = 'Enable Haven Mode';
+            toggleBlockBtn.textContent = fireMode ? 'Disable Fire Mode' : 'Enable Fire Mode';
         });
 
-        // Toggle Haven Mode
-        toggleHavenBtn.addEventListener('click', () => {
-            havenMode = !havenMode;
-            fireMode = false; // Turn off fire mode if we enable Haven mode
-            toggleHavenBtn.textContent = havenMode
-                ? 'Disable Haven Mode'
-                : 'Enable Haven Mode';
-            toggleBlockBtn.textContent = 'Enable Fire Mode';
-        });
-
-        // When map is clicked, add a "fire" or "haven" depending on mode
+        // When map is clicked in Fire Mode, add a "fire point"
         map.on('click', async (event) => {
+            if (!fireMode) return;
+
             const lngLat = [event.lngLat.lng, event.lngLat.lat];
 
-            // If Fire Mode is active
-            if (fireMode) {
-                // 1) Place a red marker on the map
-                new mapboxgl.Marker({ color: 'red' })
-                    .setLngLat(lngLat)
-                    .addTo(map);
+            // Place a red marker for the fire location
+            new mapboxgl.Marker({ color: 'red' })
+                .setLngLat(lngLat)
+                .addTo(map);
 
-                // 2) Create the buffer
-                const firePoint = turf.point(lngLat);
-                const bufferPoly = turf.buffer(firePoint, 0.02, { units: 'kilometers' });
-                fireFeatures.push(firePoint);
-                fireBuffers.push(bufferPoly);
+            // Create the buffer zone around the fire
+            const firePoint = turf.point(lngLat);
+            const bufferPoly = turf.buffer(firePoint, 0.02, { units: 'kilometers' });
+            fireFeatures.push(firePoint);
+            fireBuffers.push(bufferPoly);
 
-                // 3) Save the fire pin to the server (POST /api/fires)
-                try {
-                    await fetch('/api/fires', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ coords: lngLat })
-                    });
-                } catch (err) {
-                    console.error('Failed to save fire location:', err);
-                }
-
-                // 4) Recalculate best route if user hasn't set a custom destination
-                if (!customDestinationActive) {
-                    recalcRouteToBestSafeHaven();
-                }
+            // Send the fire location to the server
+            try {
+                await fetch('/api/fires', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ coords: lngLat })
+                });
+            } catch (err) {
+                console.error('Failed to save fire location:', err);
             }
-            // If Haven Mode is active
-            else if (havenMode) {
-                // Optional: Prompt user for a haven name
-                const havenName = prompt("Enter a name for this Safe Haven:", "Haven X") || "Unnamed Haven";
 
-                // 1) Place a yellow marker on the map
-                new mapboxgl.Marker({ color: 'yellow' })
-                    .setLngLat(lngLat)
-                    .setPopup(new mapboxgl.Popup().setText(havenName))
-                    .addTo(map);
-
-                // 2) Save the safe haven to the server (POST /api/safe-havens)
-                try {
-                    const response = await fetch('/api/safe-havens', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: havenName, coords: lngLat })
-                    });
-                    const data = await response.json();
-
-                    // Add it to our local data array
-                    safeHavensData.push({
-                        name: havenName,
-                        coords: lngLat,
-                        _id: data.insertedId
-                    });
-
-                    // Now we can also recalc route if needed
-                    if (!customDestinationActive) {
-                        recalcRouteToBestSafeHaven();
-                    }
-                } catch (err) {
-                    console.error('Failed to save safe haven:', err);
-                }
+            // Recalculate the route to the best safe haven if necessary
+            if (!customDestinationActive) {
+                recalcRouteToBestSafeHaven();
             }
         });
 
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
         // 5) CALCULATE BEST ROUTE + DETOUR IF BLOCKED
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
+
+        /**
+         * Attempts to find the best route from user to each safe haven.
+         * If the direct route is blocked, it tries a detour route.
+         * It selects the shortest valid route and updates the Directions plugin.
+         * Note: does not work all the time
+         */
         async function recalcRouteToBestSafeHaven() {
             if (!userLocation) return;
 
             const candidateRoutes = [];
 
             for (const haven of safeHavensData) {
-                // 1) Direct route: user -> haven
+                // 1) Direct route from user to haven
                 const directData = await fetchRoute([userLocation], haven.coords);
-                if (!directData || !directData.routes?.length) {
-                    continue;
-                }
+                if (!directData || !directData.routes?.length) continue;
+
                 const directRoute = directData.routes[0];
 
-                // Check if direct route is blocked
+                // Check if the direct route is blocked by a fire
                 const directBlocked = routeIntersectsFire(directRoute);
-
                 if (!directBlocked) {
                     candidateRoutes.push({
                         haven,
@@ -378,7 +340,7 @@
                         type: 'direct'
                     });
                 } else {
-                    // 2) Attempt a detour: user -> detour -> haven
+                    // 2) Attempt detour route: user -> detour -> haven
                     const detourData = await attemptDetourRoute(userLocation, haven.coords);
                     if (detourData) {
                         candidateRoutes.push({
@@ -397,17 +359,17 @@
                 return;
             }
 
-            // Pick the shortest by distance
+            // Sort routes by shortest distance
             candidateRoutes.sort((a, b) => a.distance - b.distance);
             const bestRoute = candidateRoutes[0];
 
-            // Update the Directions plugin with the best route
+            // Update Directions plugin with the best route
             directions.setOrigin(bestRoute.waypoints[0]);
             if (bestRoute.waypoints.length === 2) {
                 // Direct route
                 directions.setDestination(bestRoute.waypoints[1]);
             } else {
-                // Detour route with an intermediate waypoint
+                // Detour route with intermediate waypoints
                 bestRoute.waypoints.forEach((wp, index) => {
                     directions.setWaypoint(index, wp);
                 });
@@ -421,14 +383,14 @@
         }
 
         /**
-         * attemptDetourRoute(userLoc, havenCoords):
-         * Tries user -> waypoint -> haven around each fire buffer.
+         * Attempt to find a detour route (user -> detour -> haven)
+         * by considering fire buffer zones.
          */
         async function attemptDetourRoute(userLoc, havenCoords) {
             for (const poly of fireBuffers) {
                 const [west, south, east, north] = turf.bbox(poly);
 
-                // Center + corners
+                // Try center and corners of the fire buffer
                 const center = [(west + east) / 2, (south + north) / 2];
                 const corners = [
                     [west, south],
@@ -439,15 +401,13 @@
                 const candidates = [center, ...corners];
 
                 for (const waypoint of candidates) {
-                    // Attempt route: user -> waypoint -> haven
+                    // Try route, goes from: user -> waypoint -> haven(haven may be removed if the functioanllity does not fully )
                     const routeData = await fetchRoute([userLoc, waypoint], havenCoords);
-                    if (!routeData || !routeData.routes?.length) {
-                        continue;
-                    }
+                    if (!routeData || !routeData.routes?.length) continue;
 
                     const route = routeData.routes[0];
                     if (!routeIntersectsFire(route)) {
-                        // Found a valid detour
+                        // Found a valid detour route
                         return {
                             waypoints: [userLoc, waypoint, havenCoords],
                             distance: route.distance,
@@ -456,11 +416,11 @@
                     }
                 }
             }
-            return null; // No detour route found
+            return null; // No valid detour route found
         }
 
         /**
-         * Checks if a route intersects any fire buffer polygons.
+         * Checks if a route intersects with any fire buffer zone. Note: functionally is not perfect
          */
         function routeIntersectsFire(route) {
             const routeCoords = route.geometry.coordinates;
@@ -468,9 +428,13 @@
             return fireBuffers.some((poly) => turf.booleanIntersects(routeLine, poly));
         }
 
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
         // 6) FETCHING ROUTES
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
+
+        /**
+         * Fetches a route from the Mapbox Directions API.
+         */
         async function fetchRoute(waypointsArr, finalCoords) {
             const allPoints = [...waypointsArr, finalCoords];
             const coordStr = allPoints.map(pt => `${pt[0]},${pt[1]}`).join(';');
@@ -489,14 +453,16 @@
             }
         }
 
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
         // 7) DESTINATION INPUT (OPTIONAL OVERRIDE)
-        // ---------------------------------------------
+        // ------------------------------------------------------------------------------------------
+
         let customDestinationActive = false;
 
         const destinationInput = document.getElementById('destinationInput');
         const setDestBtn = document.getElementById('setDestBtn');
 
+        // Set custom destination on button click
         setDestBtn.addEventListener('click', () => {
             const inputValue = destinationInput.value.trim();
             if (!inputValue) {
@@ -505,7 +471,7 @@
             }
             customDestinationActive = true;
 
-            // If user enters "lat,lng" or "lng,lat"
+            // If user enters coordinates, then set the destination accordingly 
             const coords = inputValue.split(',');
             if (coords.length === 2) {
                 const lat = parseFloat(coords[0]);
