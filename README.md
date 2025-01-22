@@ -1,4 +1,3 @@
-```markdown
 # FireRoute
 
 **Created by**  
@@ -121,7 +120,6 @@ UTAK_Programming-Kompetition/
 │       └── ... (other backend logic files)
 │
 └── README.md                     # Project readme (you're reading it!)
-```
 
 **Note:**  
 - `index.html` uses MapBox to create an interactive interface for adding fire locations, safe havens, and retrieving route data.  
