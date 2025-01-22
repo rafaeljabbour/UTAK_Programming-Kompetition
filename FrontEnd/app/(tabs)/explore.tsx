@@ -7,6 +7,8 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 
+
+//Default template code from react expo
 export default function TabTwoScreen() {
   return (
     <ParallaxScrollView
