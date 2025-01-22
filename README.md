@@ -105,7 +105,7 @@ Within the repository, you’ll find the following (main folders and files may v
 ```bash
 UTAK_Programming-Kompetition/
 │
-├── TEAM_5/
+├── UTEK_Programming-Kompetition/
 │   ├── FrontEnd/
 │   │   ├── App.tsx
 │   │   ├── index.tsx             # Entry screen; allows user to join as citizen or responder
@@ -143,7 +143,7 @@ Below is a condensed guide for running the **FireRoute** project locally:
    - **Frontend (React Native via Expo)**
 
      ```bash
-     cd TEAM_5/FrontEnd
+     cd UTEK_Programming-Kompetition/FrontEnd
      npm install
      ```
 
@@ -151,7 +151,7 @@ Below is a condensed guide for running the **FireRoute** project locally:
 
      ```bash
      # In a separate terminal or after installing the frontend
-     cd TEAM_5/BackEnd
+     cd UTEK_Programming-Kompetition/BackEnd
      npm install
      ```
 
@@ -162,7 +162,7 @@ Below is a condensed guide for running the **FireRoute** project locally:
 
 4. **Run the Backend**
 
-   From `TEAM_5/BackEnd`:
+   From `UTEK_Programming-Kompetition/BackEnd`:
    ```bash
    npm start
    # or
@@ -171,7 +171,7 @@ Below is a condensed guide for running the **FireRoute** project locally:
 
 5. **Run the Frontend**
 
-   From `TEAM_5/FrontEnd`:
+   From `UTEK_Programming-Kompetition/FrontEnd`:
    ```bash
    npm start
    ```
@@ -199,11 +199,4 @@ Below is a condensed guide for running the **FireRoute** project locally:
 
 **GitHub Repository**  
 - [FireRoute on GitHub](https://github.com/rafaeljabbour/UTAK_Programming-Kompetition)
-
----
-
-## Special Thanks & Future
-A huge thanks to the organizers of the **University of Toronto Engineering Competitions (UTEK)** and to all those who supported this initiative. We are excited to represent the University of Toronto at the **Ontario Engineering Competition (OEC)** and continue improving **FireRoute** to save lives and empower communities during emergency situations.
-
-**Wish us luck at OEC!**
 ```
