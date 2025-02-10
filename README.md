@@ -1,5 +1,7 @@
 # FireRoute
 
+** Won first place at the University of Toronto Engineering Kompetition (UTEK) for the programming competition, qualifying us to provincials (OEC).
+
 **Created by**  
 - **Rafael Jabbour**  
 - **Alina Khan**  
